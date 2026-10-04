@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物理互动教学</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+<style>
+  :root { --accent:#6366f1; --accent-soft:rgba(99,102,241,.10); }
+  body { background:linear-gradient(160deg,#eef2f7 0%,#f6f8fb 45%,#eef1f8 100%); }
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+  .katex { font-size:1.02em; }
+  .panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; box-shadow:0 1px 2px rgba(15,23,42,.05); }
+  header.panel { border-top:3px solid var(--accent); }
+  #lessonTitle { color:#0f172a; }
+  #lessonSub { color:var(--accent); opacity:.85; }
+  .step-card { border-left:4px solid transparent; transition:all .2s; }
+  .step-card.active { border-left-color:var(--accent); background:var(--accent-soft); }
+  .step-num { background:var(--accent) !important; }
+  input[type=range] { accent-color:var(--accent); }
+  #btnPlay { background:var(--accent); }
+  #btnPlay:hover { filter:brightness(1.1); }
+  #subtitles { transition:opacity .35s; text-shadow:0 1px 2px rgba(255,255,255,.9);
+    border-left:4px solid var(--accent); }
+  body.cinema #left, body.cinema #mid { display:none; }
+  body.cinema #stageWrap { border-radius:0; }
+  body.cinema #subtitles { font-size:1.35rem; padding:.8rem 1.6rem; }
+  #stageWrap { position:relative; background:#0b1020; }
+  canvas { display:block; width:100%; height:100%; cursor:grab; }
+  canvas:active { cursor:grabbing; }
+  .chip { font-variant-numeric:tabular-nums; }
+  .ro-hl { color:var(--accent); background:var(--accent-soft); }
+  .cluster-card { background:linear-gradient(135deg,#f8faff,#f1f5ff); border:1px solid #dbe3f5; }
+  .cluster-node { border:1px solid #dbe3f5; background:#fff; border-radius:10px; transition:all .15s; }
+  .cluster-node:hover { border-color:var(--accent); }
+  .cluster-node.self { border-color:var(--accent); background:var(--accent-soft); }
+</style>
+</head>
+<body class="h-screen overflow-hidden text-slate-800">
+
+<div class="flex flex-col h-screen p-2 gap-2">
+  <!-- ===== 顶栏 ===== -->
+  <header class="panel flex items-center gap-3 px-4 py-2 flex-shrink-0">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="text-2xl">⚛️</span>
+      <div class="min-w-0">
+        <h1 id="lessonTitle" class="font-bold text-lg leading-tight truncate"></h1>
+        <p id="lessonSub" class="text-xs text-slate-500 truncate"></p>
+      </div>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <select id="speed" class="text-sm border rounded-lg px-2 py-1.5 bg-white">
+        <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option>
+      </select>
+      <button id="btnPlay" class="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500">▶ 播放</button>
+      <button id="btnStepB" class="px-2 py-1.5 rounded-lg border text-sm hover:bg-slate-50" title="后退一帧 (←)">⏮</button>
+      <button id="btnStepF" class="px-2 py-1.5 rounded-lg border text-sm hover:bg-slate-50" title="前进一帧 (→)">⏭</button>
+      <button id="btnLoop" class="px-2.5 py-1.5 rounded-lg border text-sm hover:bg-slate-50" title="循环播放 (L)">🔁</button>
+      <button id="btnReset" class="px-3 py-1.5 rounded-lg border text-sm hover:bg-slate-50" title="回到 t=0">⟲</button>
+      <button id="btn3D" class="px-2.5 py-1.5 rounded-lg border text-sm hover:bg-slate-50 hidden" title="3D 视角（拖拽旋转/滚轮缩放）">🧊 3D</button>
+      <button id="btnCinema" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm hover:bg-slate-700" title="自动播放+运镜跟随+字幕">🎬 电影模式</button>
+    </div>
+  </header>
+
+  <div class="flex flex-1 gap-2 min-h-0">
+    <!-- ===== 左栏：题面 + 参数 + 读数 ===== -->
+    <aside id="left" class="w-[330px] flex-shrink-0 flex flex-col gap-2 min-h-0 overflow-y-auto pr-1">
+      <div class="panel p-4 flex-shrink-0">
+        <h2 class="font-bold text-slate-900 mb-2">题目</h2>
+        <div id="problem" class="text-sm leading-relaxed text-slate-700"></div>
+        <div id="answer" class="mt-3 hidden text-sm bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-emerald-800"></div>
+        <button id="btnAnswer" class="mt-2 text-xs text-indigo-600 hover:underline">显示答案</button>
+      </div>
+      <div class="panel p-4 flex-shrink-0">
+        <h2 class="font-bold text-slate-900 mb-3">参数控制台</h2>
+        <div id="params" class="flex flex-col gap-3"></div>
+      </div>
+      <div class="panel p-4 flex-shrink-0">
+        <h2 class="font-bold text-slate-900 mb-3">实时读数</h2>
+        <div id="readouts" class="flex flex-col gap-1.5 text-sm"></div>
+      </div>
+    </aside>
+
+    <!-- ===== 中栏：分步解析 ===== -->
+    <section id="mid" class="w-[360px] flex-shrink-0 panel p-4 min-h-0 overflow-y-auto">
+      <h2 class="font-bold text-slate-900 mb-3">分步解析 <span class="text-xs font-normal text-slate-400">（点击步骤可跳转）</span></h2>
+      <div id="steps" class="flex flex-col gap-2"></div>
+    </section>
+
+    <!-- ===== 右栏：动态画板 ===== -->
+    <section id="stageWrap" class="flex-1 panel overflow-hidden min-w-0 flex flex-col">
+      <div class="relative flex-1 min-h-0">
+        <canvas id="cv"></canvas>
+        <!-- 标注画布（z-index 低于各工具层：开启画笔后工具栏仍可点） -->
+        <canvas id="markCv" class="absolute inset-0 hidden" style="cursor:crosshair;z-index:5"></canvas>
+        <!-- 舞台角标工具 -->
+        <div class="absolute top-2 left-2 flex gap-1.5" style="z-index:10">
+          <button id="btnFollow" class="text-xs px-2.5 py-1 rounded-lg bg-white/90 border shadow-sm hover:bg-white hidden">🎯 跟随镜头</button>
+          <button id="btnPen" class="text-xs px-2.5 py-1 rounded-lg bg-white/90 border shadow-sm hover:bg-white" title="画笔标注 (P)">✏️</button>
+          <button id="btnArrow" class="text-xs px-2.5 py-1 rounded-lg bg-white/90 border shadow-sm hover:bg-white" title="标注箭头 (A)">➤</button>
+          <button id="btnUndoMark" class="text-xs px-2.5 py-1 rounded-lg bg-white/90 border shadow-sm hover:bg-white hidden" title="撤销标注">↩</button>
+          <button id="btnClearMark" class="text-xs px-2.5 py-1 rounded-lg bg-white/90 border shadow-sm hover:bg-white hidden" title="清空标注">🗑</button>
+        </div>
+        <div id="overlays" class="absolute top-2 right-2 flex gap-1.5" style="z-index:10"></div>
+        <!-- 字幕 -->
+        <div id="subtitles" class="absolute bottom-14 left-1/2 -translate-x-1/2 max-w-[85%] bg-white/85 backdrop-blur border border-slate-200 rounded-2xl px-5 py-2.5 text-center text-slate-800 opacity-0 pointer-events-none text-base" style="z-index:10"></div>
+        <!-- 时间轴 -->
+        <div class="absolute bottom-0 left-0 right-0 px-4 pb-2 flex items-center gap-3" style="z-index:10">
+          <input id="timeline" type="range" min="0" max="1000" value="0" class="flex-1 accent-indigo-600">
+          <span id="clock" class="text-xs chip text-slate-500 w-20 text-right">0.0 / 0.0 s</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports": {"three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.js",
+"three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script>
+const DATA = {"lesson": {"title": "【真题】三物块弹簧碰撞（2013·新课标Ⅱ卷 35(2)）", "subtitle": "动量守恒 × 完全非弹性碰撞 × 弹性势能 · 压轴三阶段", "problem": "**【2013 年全国新课标Ⅱ卷 理综 35(2)·原题】** 光滑水平直轨道上有三个质量均为 $$m$$ 的物块 A、B、C。B 的左侧固定一轻弹簧（弹簧左侧的挡板质量不计）。设 A 以速度 $$v_0$$ 朝 B 运动，压缩弹簧；当 A、B 速度相等时，B 与 C 恰好相碰并粘接在一起，然后继续运动。假设 B 和 C 碰撞过程时间极短。求从 A 开始压缩弹簧直至与弹簧分离的过程中：\n\n（i）整个系统损失的机械能；\n（ii）弹簧被压缩到最短时的弹性势能。\n\n（演示取 $$m={float(dv[m]):g}\\,\\text{{kg}},\\ v_0={float(dv[v0]):g}\\,\\text{{m/s}},\\ k={float(dv[k]):g}\\,\\text{{N/m}}$$）", "answer": "（i）$$\\Delta E = \\frac{mv_0^2}{16}$$　（ii）$$E_p = \\frac{13mv_0^2}{48}$$（官方精校答案）\n\n过程：$$v_1=\\frac{v_0}2\\xrightarrow{B,C\\text{粘接}}v_2=\\frac{v_0}4\\xrightarrow{\\text{再压缩}}v_3=\\frac{v_0}3$$；分离时 $$v_A'=\\frac{v_0(2-\\sqrt{13})}6(\\text{反弹}),\\ v_{BC}'=\\frac{v_0(4+\\sqrt{13})}{12}$$"}, "steps": [{"title": "① 原题情景（2013 课标Ⅱ卷 35(2)）", "t0": 0, "t1": 0.307, "content": "原题：光滑水平直轨道上有三个质量均为 $$m$$ 的物块 A、B、C，B 的左侧固定一轻弹簧。A 以速度 $$v_0$$ 朝 B 运动，压缩弹簧；**当 A、B 速度相等时，B 与 C 恰好相碰并粘接在一起**。求从 A 开始压缩弹簧直至与弹簧分离的过程中：(i) 系统损失的机械能；(ii) 弹簧最短时的弹性势能。", "narration": "2013 年课标二卷压轴题：三个等质量物块，弹簧连接，B 与 C 在特定时刻粘接。"}, {"title": "② A、B 共速：动量守恒", "t0": 0.307, "t1": 0.357, "content": "A 压缩弹簧减速、B 加速，共速瞬间：$$mv_0 = 2m\\cdot v_1 \\Rightarrow v_1 = \\frac{v_0}2 = 3.0\\ \\text{m/s}$$就在这一刻，B 恰好撞上 C 并粘接——命题把\"最大压缩时刻\"和\"碰撞时刻\"焊在一起，这是全题的题眼。", "narration": "A、B 速度相等的瞬间，B 恰好碰到 C 并粘在一起，这是本题的题眼。"}, {"title": "③ B、C 完全非弹性碰撞（问 i）", "t0": 0.357, "t1": 0.367, "content": "粘接时间极短，弹簧来不及形变，B、C 动量守恒：$$m v_1 = 2m\\cdot v_2 \\Rightarrow v_2 = \\frac{v_0}4 = 1.5\\ \\text{m/s}$$损失的机械能：$$\\Delta E = \\tfrac12 m v_1^2 - \\tfrac12(2m)v_2^2 = \\frac{mv_0^2}{16} = 2.25\\ \\text{J}$$看红色 Q粘损 条在粘接瞬间跳升。", "narration": "完全非弹性碰撞损失六分之一初始动能，红色条瞬间跳升。"}, {"title": "④ 三者共速：弹簧最短（问 ii·易错点）", "t0": 0.367, "t1": 0.461, "content": "粘接时弹簧**已储存** $$\\tfrac{1}{4}mv_0^2$$（A-B 共速即 A-B 段最大压缩），粘接后 A 仍略快，再压一点点即达三者共速：$$3mv_3 = mv_0 \\Rightarrow v_3 = \\frac{v_0}3 = 2.00\\ \\text{m/s}$$官方答案（ii）用粘接后总能量减共速动能：$$E_{p\\max} = \\underbrace{\\left(\\tfrac{3}{16}+\\tfrac{1}{4}\\right)mv_0^2}_{\\text{动能+已存弹性势能}} - \\tfrac{1}{6}mv_0^2 = \\frac{13mv_0^2}{48} = 9.75\\ \\text{J}$$⚠️ 网传 $$\\frac{mv_0^2}{48}$$ 漏加了粘接时已在弹簧里的 $$\\frac{mv_0^2}{4}$$——用左栏 ΣE 校验一眼识破。", "narration": "注意：粘接瞬间弹簧里已经存了四分之一 mv0 平方，官方答案是最短时总势能十三比四十八。"}, {"title": "⑤ 弹开分离 · 出乎意料的反弹", "t0": 0.461, "t1": 1.0, "content": "弹簧恢复原长时分离，相对速度 $$\\frac{v_0\\sqrt{13}}4$$ 分配给两者：$$v_A' = \\frac{v_0(2-\\sqrt{13})}6 \\approx -1.61\\ \\text{m/s}\\ (\\text{负号=A 反弹回退！})$$ $$v_{BC}' = \\frac{v_0(4+\\sqrt{13})}{12} \\approx 3.80\\ \\text{m/s}$$动量校验 $$mv_0$$ ✓。动画里能看到 **A 被弹回向左**——多数人想不到，因为忽略了弹簧里那 9 J 的\"存货\"。", "narration": "出人意料：A 不但没追着走，反而被弹簧弹回向左退，这就是忽略预存势能的代价。"}], "params": [{"key": "m", "label": "物块质量 m（三个相同）", "min": 0.5, "max": 2, "value": 1, "step": 0.5, "digits": 1, "unit": " kg"}, {"key": "v0", "label": "A 初速 v₀", "min": 3, "max": 12, "value": 6, "step": 0.5, "digits": 1, "unit": " m/s"}, {"key": "k", "label": "弹簧劲度 k", "min": 50, "max": 300, "value": 100, "step": 10, "digits": 0, "unit": " N/m"}], "readouts": [{"label": "A、B 共速 v₁", "expr": "(1/2)*v0", "unit": " m/s", "hl": true}, {"label": "B、C 粘接后 v₂", "expr": "(1/4)*v0", "unit": " m/s"}, {"label": "粘接损失 ΔE（官方问 i）", "expr": "(1/16)*m*Math.pow(v0, 2)", "unit": " J", "hl": true}, {"label": "三者共速 v₃", "expr": "(1/3)*v0", "unit": " m/s"}, {"label": "最大弹性势能（官方问 ii）", "expr": "(13/48)*m*Math.pow(v0, 2)", "unit": " J", "hl": true}, {"label": "分离后 vA′ / vBC′", "expr": "-1/6*Math.sqrt(13)*v0 + (1/3)*v0", "unit": " m/s"}, {"label": "总能量校验 ΣE", "expr": "(1/2)*k*((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*m*Math.pow(v0, 2)*Math.pow(Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)), 2)/k\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   Math.pow(-1/2*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/12)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/2)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k), 2)\n)\n: (\n   0\n)))) + (1/2)*m*((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   Math.pow(-1/2*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0, 2)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   Math.pow((1/3)*v0 + (1/6)*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) - 1/36*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k), 2)\n)\n: (\n   Math.pow((1/12)*Math.sqrt(13)*v0 + (1/3)*v0, 2)\n)))) + (1/2)*m*((t < (41/10)/v0) ? (\n   Math.pow(v0, 2)\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   Math.pow((1/2)*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0, 2)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   Math.pow((1/3)*v0 - 1/3*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/18)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k), 2)\n)\n: (\n   Math.pow(-1/6*Math.sqrt(13)*v0 + (1/3)*v0, 2)\n)))) + ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   0\n)\n: (\n   (1/16)*m*Math.pow(v0, 2)\n)) + ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   0\n)\n: (\n   (1/2)*m*((t < (41/10)/v0) ? (\n      0\n   )\n   : ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n      Math.pow(-1/2*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0, 2)\n   )\n   : ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n      Math.pow((1/3)*v0 + (1/6)*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) - 1/36*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k), 2)\n   )\n   : (\n      Math.pow((1/12)*Math.sqrt(13)*v0 + (1/3)*v0, 2)\n   ))))\n))", "unit": " J（恒=½mv₀²）", "hl": true}], "cluster": {"name": "牛顿运动定律", "idea": "一定律说「何时不变」，二定律说「如何变」，三定律说「变必成对」——合起来才是一套完整的因果语言", "hub": "physics-cluster-牛顿运动定律.html", "members": [{"key": "law1", "name": "第一定律 · 惯性（何时不变）", "note": "合力为零 → 运动状态不变；斜面自锁 μ≥tanθ 就是它在说话", "href": "mech-斜面滑块牛顿第二定律.html", "self": false}, {"key": "law2", "name": "第二定律 · 因果定量（如何变）", "note": "F = ma：力是运动状态改变的原因，且可精确计量", "href": "mech-斜面滑块牛顿第二定律.html", "self": false}, {"key": "law3", "name": "第三定律 · 作用成对（变必成对）", "note": "碰撞双方同时受力 → 系统动量守恒的微观本质", "href": "mech-一维碰撞动量守恒.html", "self": false}, {"key": "capstone", "name": "综合压轴 · 三定律+守恒律联动", "note": "2013 课标Ⅱ卷 35(2)：每一阶段换一条规律接管", "href": "mech-真题2013课标2卷三物块弹簧碰撞.html", "self": true}]}, "toggles": [], "scene": {"world": {"x0": -6.2, "x1": 9.4, "y0": -1.3, "y1": 2.0}, "T": 2.23, "timeScale": 0.4, "follow": null, "loop": false, "accent": "#f97316", "statics": [{"kind": "ground", "x0": "-6.0", "x1": "9.2", "y": "0"}, {"kind": "springX", "ax": "Math.min(((t < (41/10)/v0) ? (\n   t*v0 - 9/2\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*(t - (41/10)/v0) - 2/5 + (1/4)*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) - 2/5 - 0.111111111111111*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)) - 1)/k - 0.333333333333333*Math.sqrt(2)*Math.sqrt(m)*v0*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   Math.max(-57/10, (1/3)*v0*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) + (-1/6*Math.sqrt(13)*v0 + (1/3)*v0)*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k)) - 2/5 - 0.111111111111111*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m)) - 1)/k - 0.333333333333333*Math.sqrt(2)*Math.sqrt(m)*v0*(-1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k))\n)))) + 3/10, ((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   -1/2*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/12)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/2)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   0\n)))) + ((t < (41/10)/v0) ? (\n   1\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*(t - (41/10)/v0) + 1 - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   Math.min(42/5, (1/3)*v0*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) + ((1/12)*Math.sqrt(13)*v0 + (1/3)*v0)*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(-1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k))\n)))) - 11/10)", "ay": "1/4", "bx": "((t < (41/10)/v0) ? (\n   1\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*(t - (41/10)/v0) + 1 - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   Math.min(42/5, (1/3)*v0*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) + ((1/12)*Math.sqrt(13)*v0 + (1/3)*v0)*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(-1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k))\n)))) - 3/10", "by": "1/4", "natLen": "4/5", "coils": 8, "amp": 7, "color": "#0ea5e9", "hideWhen": "(41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)"}, {"kind": "labels", "items": [{"text": "光滑水平直轨道（原题：光滑水平直轨道上有三个质量均为 m 的物块 A、B、C）", "x": "-5.8", "y": "-0.8", "color": "#94a3b8"}, {"text": "轻弹簧 k", "x": "-1/20", "y": "1.0", "color": "#0ea5e9"}]}], "actors": [{"id": "A", "kind": "block", "w": 0.6, "h": 0.5, "color": "#f59e0b", "label": "A", "x": "((t < (41/10)/v0) ? (\n   t*v0 - 9/2\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*(t - (41/10)/v0) - 2/5 + (1/4)*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) - 2/5 - 0.111111111111111*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)) - 1)/k - 0.333333333333333*Math.sqrt(2)*Math.sqrt(m)*v0*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   Math.max(-57/10, (1/3)*v0*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) + (-1/6*Math.sqrt(13)*v0 + (1/3)*v0)*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k)) - 2/5 - 0.111111111111111*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m)) - 1)/k - 0.333333333333333*Math.sqrt(2)*Math.sqrt(m)*v0*(-1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k))\n))))", "y": "1/4"}, {"id": "B", "kind": "block", "w": 0.6, "h": 0.5, "color": "#0ea5e9", "label": "B", "x": "((t < (41/10)/v0) ? (\n   1\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*(t - (41/10)/v0) + 1 - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   Math.min(42/5, (1/3)*v0*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) + ((1/12)*Math.sqrt(13)*v0 + (1/3)*v0)*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(-1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k))\n))))", "y": "1/4"}, {"id": "C", "kind": "block", "w": 0.6, "h": 0.5, "color": "#10b981", "label": "C", "x": "((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   8/5 - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n)\n: (\n   ((t < (41/10)/v0) ? (\n      1\n   )\n   : ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n      (1/2)*v0*(t - (41/10)/v0) + 1 - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0*Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m))/Math.sqrt(k)\n   )\n   : ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n      (1/3)*v0*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k)\n   )\n   : (\n      Math.min(42/5, (1/3)*v0*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) + ((1/12)*Math.sqrt(13)*v0 + (1/3)*v0)*(t - (41/10)/v0 - 1/3*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) - 1/3*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k)) + 1 + 0.0555555555555556*m*v0*(Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m)) - 1)/k + 0.166666666666667*Math.sqrt(2)*Math.sqrt(m)*v0*(-1/3*Math.sqrt(6)*Math.sqrt(m)*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*((1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k))/Math.sqrt(k) - 1/4*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k) + (1/8)*Math.sqrt(2)*Math.PI*Math.sqrt(m)*v0/Math.sqrt(k))\n   )))) + 3/5\n))", "y": "1/4"}], "vectors": [{"attach": "A", "ex": "((t < (41/10)/v0) ? (\n   v0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0 - 1/3*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/18)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k)\n)\n: (\n   -1/6*Math.sqrt(13)*v0 + (1/3)*v0\n))))", "ey": "0", "color": "#dc2626", "label": "vA"}, {"attach": "B", "ex": "((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   -1/2*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0 + (1/6)*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) - 1/36*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k)\n)\n: (\n   (1/12)*Math.sqrt(13)*v0 + (1/3)*v0\n))))", "ey": "0", "color": "#dc2626", "label": "vB"}], "graphs": [{"title": "v–t（三阶段速度重排）", "w": 260, "curves": [{"label": "vA", "expr": "((t < (41/10)/v0) ? (\n   v0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0 - 1/3*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/18)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k)\n)\n: (\n   -1/6*Math.sqrt(13)*v0 + (1/3)*v0\n))))", "color": "#f59e0b"}, {"label": "vB", "expr": "((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   -1/2*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   (1/3)*v0 + (1/6)*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) - 1/36*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k)\n)\n: (\n   (1/12)*Math.sqrt(13)*v0 + (1/3)*v0\n))))", "color": "#0ea5e9"}]}], "energyBars": {"items": [{"label": "EkA", "color": "#f59e0b", "expr": "(1/2)*m*((t < (41/10)/v0) ? (\n   Math.pow(v0, 2)\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   Math.pow((1/2)*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0, 2)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   Math.pow((1/3)*v0 - 1/3*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/18)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k), 2)\n)\n: (\n   Math.pow(-1/6*Math.sqrt(13)*v0 + (1/3)*v0, 2)\n))))", "emax": "(1/2)*m*Math.pow(v0, 2)"}, {"label": "EkB", "color": "#0ea5e9", "expr": "(1/2)*m*((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   Math.pow(-1/2*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0, 2)\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   Math.pow((1/3)*v0 + (1/6)*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) - 1/36*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k), 2)\n)\n: (\n   Math.pow((1/12)*Math.sqrt(13)*v0 + (1/3)*v0, 2)\n))))", "emax": "(1/2)*m*Math.pow(v0, 2)"}, {"label": "EkC", "color": "#10b981", "expr": "((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   0\n)\n: (\n   (1/2)*m*((t < (41/10)/v0) ? (\n      0\n   )\n   : ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n      Math.pow(-1/2*v0*Math.cos(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)) + (1/2)*v0, 2)\n   )\n   : ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n      Math.pow((1/3)*v0 + (1/6)*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) - 1/36*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k), 2)\n   )\n   : (\n      Math.pow((1/12)*Math.sqrt(13)*v0 + (1/3)*v0, 2)\n   ))))\n))", "emax": "(1/2)*m*Math.pow(v0, 2)"}, {"label": "E弹", "color": "#8b5cf6", "expr": "(1/2)*k*((t < (41/10)/v0) ? (\n   0\n)\n: ((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   (1/2)*m*Math.pow(v0, 2)*Math.pow(Math.sin(Math.sqrt(2)*Math.sqrt(k)*(t - (41/10)/v0)/Math.sqrt(m)), 2)/k\n)\n: ((t < (41/10)/v0 + (1/3)*Math.sqrt(6)*Math.sqrt(m)*Math.atan((1/6)*Math.sqrt(3))/Math.sqrt(k) + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k) + (1/3)*Math.sqrt(6)*Math.sqrt(m)*(Math.PI - 2*Math.atan((1/6)*Math.sqrt(3)))/Math.sqrt(k)) ? (\n   Math.pow(-1/2*Math.sqrt(2)*Math.sqrt(m)*v0*(1 - Math.cos((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m)))/Math.sqrt(k) + (1/12)*Math.sqrt(6)*Math.sqrt(m)*v0*Math.sin((1/2)*Math.sqrt(6)*Math.sqrt(k)*(t - (41/10)/v0 - 1/4*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k))/Math.sqrt(m))/Math.sqrt(k) + (1/2)*Math.sqrt(2)*Math.sqrt(m)*v0/Math.sqrt(k), 2)\n)\n: (\n   0\n))))", "emax": "(1/2)*m*Math.pow(v0, 2)"}, {"label": "Q粘损", "color": "#ef4444", "expr": "((t < (41/10)/v0 + (1/4)*Math.sqrt(2)*Math.PI*Math.sqrt(m)/Math.sqrt(k)) ? (\n   0\n)\n: (\n   (1/16)*m*Math.pow(v0, 2)\n))", "emax": "(1/2)*m*Math.pow(v0, 2)"}]}}};
+
+/* ================= 参数与表达式编译 ================= */
+const P = {};
+(DATA.params||[]).forEach(p => P[p.key] = p.value);
+const XVARS = (DATA.integrators||[]).map(i => i.out);
+
+function makeEval(expr, extra=[]) {
+  const names = [...(DATA.params||[]).map(p=>p.key), ...XVARS, ...extra];
+  return new Function('t','P','X',
+    `const {${names.join(',')}} = Object.assign({},P,X); return (${expr});`);
+}
+
+/* ================= 数值积分器（如竖直圆 dphi/dt=v/r） ================= */
+const INT = {};   // out -> {ts:[], ys:[], T:loopTime|null}
+function buildIntegrators() {
+  XVARS.forEach(k => INT[k] = null);
+  (DATA.integrators||[]).forEach(ig => {
+    const y0f = makeEval(ig.y0), dyf = makeEval(ig.dy, ['y']);
+    const stopf = ig.stop ? makeEval(ig.stop, ['y']) : null;
+    let t = 0, y = y0f(0, P, {});
+    const dt = (ig.dt || 0.002), ts = [0], ys = [y];
+    const tCap = ig.tCap || 600;
+    while (t < tCap) {
+      // RK4
+      const f = (tt, yy) => dyf(tt, P, {y:yy});
+      const k1 = f(t, y), k2 = f(t+dt/2, y+dt*k1/2), k3 = f(t+dt/2, y+dt*k2/2), k4 = f(t+dt, y+dt*k3);
+      y += dt*(k1+2*k2+2*k3+k4)/6; t += dt;
+      ts.push(t); ys.push(y);
+      if (stopf && stopf(t, P, {y}) > 0) break;
+    }
+    INT[ig.out] = { ts, ys, T: ts[ts.length-1], loop: !!ig.loop };
+  });
+}
+function lookupVar(k, t) {
+  const tb = INT[k]; if (!tb) return 0;
+  let tt = t;
+  if (tb.loop && tb.T > 0) tt = t % tb.T;
+  const arr = tb.ts;
+  if (tt >= arr[arr.length-1]) return tb.ys[tb.ys.length-1];
+  let lo = 0, hi = arr.length-1;
+  while (hi-lo > 1) { const mid=(lo+hi)>>1; (arr[mid]<=tt)?lo=mid:hi=mid; }
+  const f = (tt-arr[lo])/(arr[hi]-arr[lo]||1);
+  return tb.ys[lo] + f*(tb.ys[hi]-tb.ys[lo]);
+}
+
+/* ================= 场景编译 ================= */
+const SC = DATA.scene;
+const X = {};  // 每帧积分变量值
+function frameVars(t) { XVARS.forEach(k => X[k] = lookupVar(k, t)); }
+const evalE = {};   // 缓存编译的表达式
+function E(expr, extra=[]) {
+  const key = expr + '|' + extra.join(',');
+  if (!evalE[key]) evalE[key] = makeEval(expr, extra);
+  return evalE[key];
+}
+function ev(expr, t, extra=[]) { return E(expr, extra)(t, P, X); }
+function evp(expr) { return E(expr)(0, P, X); }   // 与 t 无关的表达式
+
+const actorF = {};
+(SC.actors||[]).forEach(a => { actorF[a.id] = { x: E(a.x), y: E(a.y), ang: a.angle?E(a.angle):null }; });
+
+function actorPos(a, t) {
+  const f = actorF[a.id];
+  return { x: f.x(t,P,X), y: f.y(t,P,X) };
+}
+
+/* ================= 画布与镜头 ================= */
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let W=0, H=0, DPR=1;
+function resize() {
+  const r = cv.parentElement.getBoundingClientRect();
+  if (typeof markResize === 'function') queueMicrotask(markResize);
+  DPR = window.devicePixelRatio || 1;
+  cv.width = r.width*DPR; cv.height = r.height*DPR;
+  W = r.width; H = r.height;
+}
+window.addEventListener('resize', resize);
+
+const cam = { cx:0, cy:0, scale:50, follow:false };
+function fitCamera() {
+  const w = SC.world;
+  cam.cx = (w.x0+w.x1)/2; cam.cy = (w.y0+w.y1)/2;
+  cam.scale = Math.min(W/(w.x1-w.x0), H/(w.y1-w.y0)) * 0.88;
+}
+function w2sX(x){ return W/2 + (x-cam.cx)*cam.scale; }
+function w2sY(y){ return H/2 - (y-cam.cy)*cam.scale; }
+
+/* 用户交互：滚轮缩放 / 拖拽平移（手动操作即解除跟随） */
+let dragging=null;
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const k = Math.exp(-e.deltaY*0.0012);
+  const mx = (e.offsetX-W/2)/cam.scale + cam.cx, my = cam.cy-(e.offsetY-H/2)/cam.scale;
+  cam.scale *= k;
+  cam.cx = mx-(e.offsetX-W/2)/cam.scale; cam.cy = my+(e.offsetY-H/2)/cam.scale;
+  setFollow(false);
+}, {passive:false});
+cv.addEventListener('pointerdown', e => { dragging={x:e.clientX,y:e.clientY,cx:cam.cx,cy:cam.cy}; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  cam.cx = dragging.cx-(e.clientX-dragging.x)/cam.scale;
+  cam.cy = dragging.cy+(e.clientY-dragging.y)/cam.scale;
+  setFollow(false);
+});
+cv.addEventListener('pointerup', () => dragging=null);
+
+const btnFollow = document.getElementById('btnFollow');
+function setFollow(v) {
+  cam.follow = v && !!SC.follow;
+  btnFollow.classList.toggle('hidden', cam.follow);
+  if (cam.follow) fitCamera();
+}
+btnFollow.onclick = () => setFollow(true);
+
+/* ---- 画笔标注层（独立 canvas，不随镜头变换；画笔/箭头/撤销/清空） ---- */
+const markCv = document.getElementById('markCv');
+const mctx = markCv.getContext('2d');
+let markMode = null, markDrawing = null;
+const marks = [];   // {type:'pen',pts:[...]} | {type:'arrow',x0,y0,x1,y1}
+function markResize() { markCv.width = W*DPR; markCv.height = H*DPR; markCv.style.width = W+'px'; markCv.style.height = H+'px'; mctx.setTransform(DPR,0,0,DPR,0,0); redrawMarks(); }
+function redrawMarks() {
+  mctx.clearRect(0, 0, W, H);
+  marks.forEach(m => {
+    mctx.strokeStyle = '#f43f5e'; mctx.fillStyle = '#f43f5e'; mctx.lineWidth = 2.4; mctx.lineCap = 'round';
+    if (m.type === 'pen') {
+      mctx.beginPath();
+      m.pts.forEach((p, i) => i ? mctx.lineTo(p.x, p.y) : mctx.moveTo(p.x, p.y));
+      mctx.stroke();
+    } else {
+      arrow(mctx, m.x0, m.y0, m.x1, m.y1);
+    }
+  });
+}
+const btnPen = document.getElementById('btnPen'), btnArrow = document.getElementById('btnArrow');
+const btnUndoMark = document.getElementById('btnUndoMark'), btnClearMark = document.getElementById('btnClearMark');
+function setMarkMode(mode) {
+  markMode = (markMode === mode) ? null : mode;
+  markCv.classList.toggle('hidden', !markMode);
+  btnPen.style.background = markMode === 'pen' ? '#4f46e5' : ''; btnPen.style.color = markMode === 'pen' ? '#fff' : '';
+  btnArrow.style.background = markMode === 'arrow' ? '#4f46e5' : ''; btnArrow.style.color = markMode === 'arrow' ? '#fff' : '';
+  btnUndoMark.classList.toggle('hidden', !marks.length);
+  btnClearMark.classList.toggle('hidden', !marks.length);
+}
+btnPen.onclick = () => setMarkMode('pen');
+btnArrow.onclick = () => setMarkMode('arrow');
+btnUndoMark.onclick = () => { marks.pop(); redrawMarks(); btnUndoMark.classList.toggle('hidden', !marks.length); btnClearMark.classList.toggle('hidden', !marks.length); };
+btnClearMark.onclick = () => { marks.length = 0; redrawMarks(); setMarkMode(markMode); };
+function markPos(e) { const r = markCv.getBoundingClientRect(); return { x: e.clientX-r.left, y: e.clientY-r.top }; }
+markCv.addEventListener('pointerdown', e => {
+  if (!markMode) return;
+  const p = markPos(e);
+  markDrawing = (markMode === 'pen') ? {type:'pen', pts:[p]} : {type:'arrow', x0:p.x, y0:p.y, x1:p.x, y1:p.y};
+  markCv.setPointerCapture(e.pointerId);
+});
+markCv.addEventListener('pointermove', e => {
+  if (!markDrawing) return;
+  const p = markPos(e);
+  if (markDrawing.type === 'pen') {
+    markDrawing.pts.push(p);
+  } else {
+    markDrawing.x1 = p.x; markDrawing.y1 = p.y;
+  }
+  const preview = marks.includes(markDrawing) ? null : markDrawing;
+  redrawMarks();
+  if (preview) { mctx.strokeStyle = '#f43f5e'; mctx.lineWidth = 2.4; mctx.lineCap = 'round';
+    if (preview.type === 'pen') { mctx.beginPath(); preview.pts.forEach((q,i)=>i?mctx.lineTo(q.x,q.y):mctx.moveTo(q.x,q.y)); mctx.stroke(); }
+    else arrow(mctx, preview.x0, preview.y0, preview.x1, preview.y1); }
+});
+markCv.addEventListener('pointerup', () => {
+  if (markDrawing) { if (markDrawing.type !== 'pen' || markDrawing.pts.length > 1) marks.push(markDrawing); markDrawing = null; redrawMarks(); }
+});
+
+/* ================= 播放引擎 ================= */
+let t = 0, playing = false, speed = 1, T_eff = SC.T || 6;
+// 教学循环律：默认重复播放，整段压到 ≤10s（超时场景自动加速）
+const T_MAX = 10;
+let loopOn = true;
+const btnPlay = document.getElementById('btnPlay');
+const timeline = document.getElementById('timeline');
+const clockEl = document.getElementById('clock');
+
+function setPlaying(v) {
+  playing = v;
+  btnPlay.textContent = v ? '⏸ 暂停' : '▶ 播放';
+}
+btnPlay.onclick = () => setPlaying(!playing);
+document.getElementById('btnReset').onclick = () => { t=0; tracesClear(); setPlaying(false); syncUI(); };
+document.getElementById('speed').onchange = e => speed = parseFloat(e.target.value);
+timeline.oninput = () => { t = timeline.value/1000*T_eff; tracesClear(); };
+const btnLoop = document.getElementById('btnLoop');
+function paintLoop() { btnLoop.style.background = loopOn ? '#4f46e5' : ''; btnLoop.style.color = loopOn ? '#fff' : ''; }
+btnLoop.onclick = () => { loopOn = !loopOn; paintLoop(); };
+paintLoop();
+/* 逐帧步进：±1/48 s（≈一帧@48fps） */
+function stepFrame(dir) {
+  setPlaying(false);
+  t = Math.max(0, Math.min(T_eff, t + dir/48));
+  tracesClear();
+}
+document.getElementById('btnStepF').onclick = () => stepFrame(+1);
+document.getElementById('btnStepB').onclick = () => stepFrame(-1);
+/* 键盘：空格播放/暂停 · ←→逐帧 · Home 回零 · L 循环 · C 电影模式 · 1-9 跳步骤 */
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+  const k = e.key;
+  if (k === ' ') { e.preventDefault(); setPlaying(!playing); }
+  else if (k === 'ArrowRight') { e.preventDefault(); stepFrame(+1); }
+  else if (k === 'ArrowLeft') { e.preventDefault(); stepFrame(-1); }
+  else if (k === 'Home') { t = 0; tracesClear(); syncUI(); }
+  else if (k === 'l' || k === 'L') btnLoop.click();
+  else if (k === 'c' || k === 'C') document.getElementById('btnCinema').click();
+  else if (/^[1-9]$/.test(k)) {
+    const cards = document.querySelectorAll('.step-card');
+    const i = parseInt(k) - 1;
+    if (cards[i]) cards[i].click();
+  }
+});
+
+function enterCinema() {
+  document.body.classList.add('cinema');
+  document.getElementById('btnCinema').textContent = '✕ 退出电影';
+  if (SC.follow) setFollow(true);
+  setPlaying(true);
+}
+function exitCinema() {
+  document.body.classList.remove('cinema');
+  document.getElementById('btnCinema').textContent = '🎬 电影模式';
+  setFollow(false); fitCamera();
+}
+document.getElementById('btnCinema').onclick = () =>
+  document.body.classList.contains('cinema') ? exitCinema() : enterCinema();
+
+/* ================= 步骤/字幕同步 ================= */
+const subEl = document.getElementById('subtitles');
+let activeStep = -1;
+function syncSteps() {
+  const frac = T_eff>0 ? t/T_eff : 0;
+  let idx = 0;
+  (DATA.steps||[]).forEach((s,i) => { if (frac >= s.t0) idx = i; });
+  if (idx !== activeStep) {
+    activeStep = idx;
+    document.querySelectorAll('.step-card').forEach((el,i)=>el.classList.toggle('active', i===idx));
+    const s = DATA.steps[idx];
+    if (s && s.narration) {
+      subEl.textContent = s.narration;
+      subEl.style.opacity = (playing || document.body.classList.contains('cinema')) ? 1 : 0;
+    }
+    const act = document.querySelectorAll('.step-card')[idx];
+    if (act && !document.body.classList.contains('cinema')) act.scrollIntoView({block:'nearest', behavior:'smooth'});
+  }
+}
+
+/* ================= 轨迹残影 ================= */
+const traces = {};
+function tracesClear() { Object.keys(traces).forEach(k=>delete traces[k]); }
+function pushTrace(a, pos) {
+  if (!a.trace) return;
+  (traces[a.id] = traces[a.id]||[]).push(pos);
+  const n = a.trace.n || 120;
+  if (traces[a.id].length > n) traces[a.id].shift();
+}
+
+/* ================= 静态场景绘制 ================= */
+function niceGrid(world) {
+  const span = Math.max(world.x1-world.x0, world.y1-world.y0);
+  const raw = span/8, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1,2,5,10]) if (raw <= m*p) return m*p;
+  return 10*p;
+}
+function drawGrid(world) {
+  const step = niceGrid(world);
+  ctx.lineWidth = 1; ctx.font = '10px ui-sans-serif';
+  const x0 = Math.floor(cam.cx-(W/2)/cam.scale), x1 = Math.ceil(cam.cx+(W/2)/cam.scale);
+  const y0 = Math.floor(cam.cy-(H/2)/cam.scale), y1 = Math.ceil(cam.cy+(H/2)/cam.scale);
+  ctx.strokeStyle = 'rgba(148,163,184,.18)';
+  for (let gx = Math.floor(x0/step)*step; gx<=x1; gx+=step) { ctx.beginPath(); ctx.moveTo(w2sX(gx),0); ctx.lineTo(w2sX(gx),H); ctx.stroke(); }
+  for (let gy = Math.floor(y0/step)*step; gy<=y1; gy+=step) { ctx.beginPath(); ctx.moveTo(0,w2sY(gy)); ctx.lineTo(W,w2sY(gy)); ctx.stroke(); }
+  // 坐标轴
+  ctx.strokeStyle = 'rgba(100,116,139,.5)'; ctx.lineWidth = 1.2;
+  if (0>=y0-2*step && 0<=y1+2*step) { ctx.beginPath(); ctx.moveTo(0,w2sY(0)); ctx.lineTo(W,w2sY(0)); ctx.stroke(); }
+  if (0>=x0-2*step && 0<=x1+2*step) { ctx.beginPath(); ctx.moveTo(w2sX(0),0); ctx.lineTo(w2sX(0),H); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(100,116,139,.8)';
+  ctx.fillText('x', W-14, w2sY(0)-6); ctx.fillText('y', w2sX(0)+6, 14);
+}
+
+function hatchGround(x0, x1, y) {
+  ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(w2sX(x0), w2sY(y)); ctx.lineTo(w2sX(x1), w2sY(y)); ctx.stroke();
+  ctx.lineWidth = 1; ctx.strokeStyle = '#94a3b8';
+  for (let x = x0; x <= x1; x += (x1-x0)/40) {
+    ctx.beginPath(); ctx.moveTo(w2sX(x), w2sY(y)); ctx.lineTo(w2sX(x)-8, w2sY(y)+9); ctx.stroke();
+  }
+}
+
+function arrow(ctx2, sx, sy, ex, ey, color, width=2.2) {
+  const dx = ex-sx, dy = ey-sy, len = Math.hypot(dx,dy);
+  if (len < 2) return;
+  ctx2.strokeStyle = color || ctx2.strokeStyle; ctx2.fillStyle = color || ctx2.fillStyle; ctx2.lineWidth = width;
+  ctx2.beginPath(); ctx2.moveTo(sx,sy); ctx2.lineTo(ex,ey); ctx2.stroke();
+  const ux = dx/len, uy = dy/len, head = Math.min(10, len*0.35);
+  ctx2.beginPath();
+  ctx2.moveTo(ex,ey);
+  ctx2.lineTo(ex-head*ux+head*0.45*uy, ey-head*uy-head*0.45*ux);
+  ctx2.lineTo(ex-head*ux-head*0.45*uy, ey-head*uy+head*0.45*ux);
+  ctx2.closePath(); ctx2.fill();
+}
+
+let arrowScale = {};   // vector idx -> auto scale
+function computeAutoScales() {
+  arrowScale = {};
+  (SC.vectors||[]).forEach((v,i) => {
+    if (v.scale && v.scale !== 'auto') { arrowScale[i] = v.scale; return; }
+    let mx = 0;
+    for (let k = 0; k <= 60; k++) {
+      const tt = k/60*T_eff; frameVars(tt);
+      const fx = E(v.ex), fy = E(v.ey);
+      mx = Math.max(mx, Math.hypot(fx(tt,P,X), fy(tt,P,X)));
+    }
+    arrowScale[i] = mx > 0 ? (SC.world.x1-SC.world.x0)*0.16/mx : 1;
+  });
+}
+
+function drawStatics() {
+  (SC.statics||[]).forEach(s => {
+    if (s.hideWhen && ev(s.hideWhen, t) > 0) return;
+    if (s.kind === 'ground') hatchGround(evp(s.x0), evp(s.x1), evp(s.y));
+    else if (s.kind === 'polygon') {
+      ctx.beginPath();
+      s.pts.forEach((pt,i) => { const px=w2sX(evp(pt[0])), py=w2sY(evp(pt[1])); i?ctx.lineTo(px,py):ctx.moveTo(px,py); });
+      ctx.closePath();
+      ctx.fillStyle = s.fill || 'rgba(226,232,240,.85)'; ctx.fill();
+      ctx.strokeStyle = s.stroke || '#64748b'; ctx.lineWidth = 1.6; ctx.stroke();
+      if (s.label) { ctx.fillStyle='#475569'; ctx.font='12px ui-sans-serif';
+        ctx.fillText(s.label, w2sX(evp(s.labelAt[0])), w2sY(evp(s.labelAt[1]))); }
+    }
+    else if (s.kind === 'rails') {
+      const x0=evp(s.x0), x1=evp(s.x1), y1=evp(s.y1), y2=evp(s.y2);
+      ctx.strokeStyle='#334155'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(w2sX(x0),w2sY(y1)); ctx.lineTo(w2sX(x1),w2sY(y1)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(w2sX(x0),w2sY(y2)); ctx.lineTo(w2sX(x1),w2sY(y2)); ctx.stroke();
+      // 右端电阻
+      const zx = w2sX(x1), zy1 = w2sY(y1), zy2 = w2sY(y2), n = 6;
+      ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(zx, zy1);
+      for (let k = 0; k < n; k++) ctx.lineTo(zx + (k%2? -8:8), zy1+(zy2-zy1)*(k+0.5)/n);
+      ctx.lineTo(zx, zy2); ctx.stroke();
+      ctx.fillStyle = '#334155'; ctx.font = '13px ui-sans-serif';
+      ctx.fillText('R', zx+14, (zy1+zy2)/2);
+    }
+    else if (s.kind === 'fieldMarkers') {
+      const x0=evp(s.x0), y0=evp(s.y0), x1=evp(s.x1), y1=evp(s.y1), sp=s.spacing||0.5;
+      ctx.strokeStyle = ctx.fillStyle = s.color || 'rgba(99,102,241,.75)'; ctx.lineWidth = 1.4;
+      for (let x = x0; x <= x1; x += sp) for (let y = y0; y <= y1; y += sp) {
+        const sx = w2sX(x), sy = w2sY(y);
+        if (s.dir === 'in') { ctx.beginPath(); ctx.moveTo(sx-4,sy-4); ctx.lineTo(sx+4,sy+4); ctx.moveTo(sx+4,sy-4); ctx.lineTo(sx-4,sy+4); ctx.stroke(); }
+        else if (s.dir === 'out') { ctx.beginPath(); ctx.arc(sx,sy,2,0,7); ctx.fill(); }
+        else { const d = {right:[1,0],left:[-1,0],up:[0,1],down:[0,-1]}[s.dir]||[1,0];
+          arrow(ctx, sx-5*d[0], sy+5*d[1], sx+5*d[0], sy-5*d[1], s.color||'rgba(99,102,241,.75)', 1.4); }
+      }
+      if (s.label) { ctx.fillStyle = s.color||'#6366f1'; ctx.font='bold 13px ui-sans-serif';
+        ctx.fillText(s.label, w2sX(x0), w2sY(y1)-8); }
+    }
+    else if (s.kind === 'plates') {
+      const x=evp(s.x), y1=evp(s.y1), y2=evp(s.y2), len=evp(s.len);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(w2sX(x), w2sY(y1)-4, w2sX(x+len)-w2sX(x), 6);
+      ctx.fillRect(w2sX(x), w2sY(y2)-2, w2sX(x+len)-w2sX(x), 6);
+      ctx.font = 'bold 13px ui-sans-serif';
+      ctx.fillText(s.topSign==='-'?'−':'+', w2sX(x)-16, w2sY(y1)+5);
+      ctx.fillText(s.topSign==='-'?'+':'−', w2sX(x)-16, w2sY(y2)+5);
+      // 板间场强箭头
+      const n = 5, ym = (y1+y2)/2;
+      ctx.strokeStyle = 'rgba(99,102,241,.6)';
+      for (let k = 1; k < n; k++) {
+        const yy = y1+(y2-y1)*k/n, sx = w2sX(x+len/2);
+        arrow(ctx, sx, w2sY(yy)-12, sx, w2sY(yy)+12, 'rgba(99,102,241,.6)', 1.4);
+      }
+      if (s.label) { ctx.fillStyle='#6366f1'; ctx.font='12px ui-sans-serif'; ctx.fillText(s.label, w2sX(x+len)+8, w2sY(ym)); }
+    }
+    else if (s.kind === 'arcPath') {
+      const cx=evp(s.cx), cy=evp(s.cy), r=evp(s.r);
+      ctx.setLineDash([6,5]); ctx.strokeStyle='rgba(100,116,139,.6)'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(w2sX(cx), w2sY(cy), r*cam.scale, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      if (s.center) { ctx.fillStyle='#475569'; ctx.beginPath(); ctx.arc(w2sX(cx),w2sY(cy),3,0,7); ctx.fill(); ctx.fillText('O', w2sX(cx)+6, w2sY(cy)-6); }
+    }
+    else if (s.kind === 'spring') {
+      // 锚点 → 动体的弹簧折线（每帧重画）
+      const a = (SC.actors||[]).find(x => x.id === s.to);
+      if (a) {
+        const p = actorPos(a, t);
+        const ax = w2sX(evp(s.ax)), ay = w2sY(evp(s.ay));
+        const bx = w2sX(p.x), by = w2sY(p.y);
+        const n = s.coils || 10, amp = s.amp || 10;
+        const dx = bx-ax, dy = by-ay, len = Math.hypot(dx,dy), ux = dx/len, uy = dy/len;
+        const nx = -uy, ny = ux;
+        ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ax, ay);
+        ctx.lineTo(ax+ux*12, ay+uy*12);
+        for (let k = 0; k < n; k++) {
+          const f0 = 12+(len-24)*(k+0.5)/n, side = (k%2? -1:1)*amp;
+          ctx.lineTo(ax+ux*f0+nx*side, ay+uy*f0+ny*side);
+        }
+        ctx.lineTo(bx-ux*12, by-uy*12); ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+    }
+    else if (s.kind === 'ammeter') {
+      // 电流表表盘：指针角随 exprI 线性（-60°..+60°）
+      const ax = w2sX(evp(s.x)), ay = w2sY(evp(s.y)), rad = s.rad || 26;
+      const I = ev(s.exprI, t), frac = Math.max(0, Math.min(1, I/evp(s.iMax)));
+      ctx.beginPath(); ctx.arc(ax, ay, rad, 0, 7);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
+      const a0 = Math.PI*(1 + 1/3) - frac*Math.PI*(2/3);   // 左下→右下
+      ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(ax, ay);
+      ctx.lineTo(ax + Math.cos(a0)*rad*0.82, ay + Math.sin(a0)*rad*0.82);
+      ctx.stroke();
+      ctx.fillStyle = '#334155'; ctx.font = '11px ui-sans-serif'; ctx.textAlign='center';
+      ctx.fillText(s.label || 'A', ax, ay + rad - 4);
+      ctx.textAlign='left';
+    }
+    else if (s.kind === 'springX') {
+      // 两端均为表达式的弹簧（滑块对撞缓冲用）
+      const ax = w2sX(evp(s.ax)), ay = w2sY(evp(s.ay));
+      const bx = w2sX(evp(s.bx)), by = w2sY(evp(s.by));
+      const n = s.coils || 9, amp = s.amp || 9;
+      const dx = bx-ax, dy = by-ay, len = Math.hypot(dx,dy), ux = dx/len, uy = dy/len;
+      const nx = -uy, ny = ux;
+      const stretch = s.natLen ? Math.max(0.7, Math.min(1.25, len/cam.scale/evp(s.natLen))) : 1;
+      ctx.strokeStyle = s.color || '#64748b'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(ax, ay);
+      ctx.lineTo(ax+ux*10, ay+uy*10);
+      for (let k = 0; k < n; k++) {
+        const f0 = 10+(len-20)*(k+0.5)/n*stretch, side = (k%2? -1:1)*amp;
+        ctx.lineTo(ax+ux*f0+nx*side, ay+uy*f0+ny*side);
+      }
+      ctx.lineTo(bx-ux*10, by-uy*10); ctx.lineTo(bx, by);
+      ctx.stroke();
+      // 两端小挡板（垂直于弹簧方向）
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(ax-uy*6, ay+ux*6); ctx.lineTo(ax+uy*6, ay-ux*6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx-uy*6, by+ux*6); ctx.lineTo(bx+uy*6, by-ux*6); ctx.stroke();
+    }
+    else if (s.kind === 'fieldRows') {
+      // 逐行 ×/· 标记（三角形等非矩形场区用：rows=[[y,x0,x1],...]）
+      ctx.strokeStyle = ctx.fillStyle = s.color || 'rgba(99,102,241,.6)'; ctx.lineWidth = 1.3;
+      (s.rows || []).forEach(row => {
+        const y = evp(row[0]), x0 = evp(row[1]), x1 = evp(row[2]);
+        for (let x = x0; x <= x1; x += (s.spacing || 0.05)) {
+          const px = w2sX(x), py = w2sY(y);
+          if (s.dir === 'in') {
+            ctx.beginPath(); ctx.moveTo(px-4,py-4); ctx.lineTo(px+4,py+4);
+            ctx.moveTo(px+4,py-4); ctx.lineTo(px-4,py+4); ctx.stroke();
+          } else { ctx.beginPath(); ctx.arc(px,py,2,0,7); ctx.fill(); }
+        }
+      });
+    }
+    else if (s.kind === 'labels') {
+      (s.items||[]).forEach(L => { ctx.fillStyle = L.color||'#475569'; ctx.font=(L.bold?'bold ':'')+'13px ui-sans-serif';
+        ctx.fillText(L.text, w2sX(evp(L.x)), w2sY(evp(L.y))); });
+    }
+  });
+}
+
+/* ---- 电场：点电荷 + 场线 + 矢量场（EM 共用） ---- */
+function fieldAt(chs, x, y) {   // k=1 归一化
+  let ex=0, ey=0;
+  chs.forEach(c => {
+    const dx = x-c.x, dy = y-c.y, r2 = dx*dx+dy*dy+1e-9;
+    const e = c.q/r2;              // q/r^2, 方向 (dx,dy)/r
+    const r = Math.sqrt(r2);
+    ex += e*dx/r; ey += e*dy/r;
+  });
+  return { ex, ey, mag: Math.hypot(ex,ey) };
+}
+let fieldCache = null;
+function rebuildField() {
+  if (!SC.charges) { fieldCache = null; return; }
+  const chs = SC.charges.map(c => ({ x: evp(c.x), y: evp(c.y), q: evp(c.q) }));
+  const w = SC.world, lines = [];
+  chs.forEach((c, ci) => {
+    const n = Math.max(6, Math.min(16, Math.round(Math.abs(c.q)*8)));
+    for (let k = 0; k < n; k++) {
+      const a = k/n*Math.PI*2, r0 = 0.35*(w.x1-w.x0)/20;
+      let x = c.x + Math.cos(a)*r0, y = c.y + Math.sin(a)*r0;
+      const pts = [[x,y]];
+      for (let s = 0; s < 900; s++) {
+        const f = fieldAt(chs, x, y);
+        if (f.mag < 1e-7) break;
+        const h = (w.x1-w.x0)/220;
+        x += f.ex/f.mag*h*Math.sign(c.q); y += f.ey/f.mag*h*Math.sign(c.q);
+        pts.push([x,y]);
+        if (x<w.x0*1.5||x>w.x1*1.5||y<w.y0*1.5||y>w.y1*1.5) break;
+        const hit = chs.some((c2,ci2) => ci2!==ci && Math.hypot(x-c2.x,y-c2.y) < r0*0.6);
+        if (hit) break;
+      }
+      if (pts.length > 4) lines.push(pts);
+    }
+  });
+  fieldCache = { chs, lines };
+}
+function drawField() {
+  if (!fieldCache) return;
+  // 场线
+  ctx.strokeStyle = 'rgba(99,102,241,.5)'; ctx.lineWidth = 1.1;
+  fieldCache.lines.forEach(pts => {
+    ctx.beginPath();
+    pts.forEach((p,i)=> i?ctx.lineTo(w2sX(p[0]),w2sY(p[1])):ctx.moveTo(w2sX(p[0]),w2sY(p[1])));
+    ctx.stroke();
+  });
+  // 矢量场
+  const g = SC.fieldGrid; if (!g) return;
+  const sp = g.spacing;
+  for (let x = evp(g.x0); x <= evp(g.x1); x += sp) for (let y = evp(g.y0); y <= evp(g.y1); y += sp) {
+    const f = fieldAt(fieldCache.chs, x, y);
+    if (f.mag < 1e-6) continue;
+    const len = Math.min(sp*0.45, sp*0.12*Math.log1p(f.mag*40));
+    const alpha = Math.min(0.55, 0.1+0.1*Math.log1p(f.mag*30));
+    arrow(ctx, w2sX(x), w2sY(y), w2sX(x)+f.ex/f.mag*len*cam.scale, w2sY(y)-f.ey/f.mag*len*cam.scale, `rgba(16,185,129,${alpha})`, 1.3);
+  }
+  // 电荷
+  ctx.font = 'bold 14px ui-sans-serif';
+  fieldCache.chs.forEach((c, i) => {
+    const meta = SC.charges[i];
+    ctx.beginPath(); ctx.arc(w2sX(c.x), w2sY(c.y), (meta.r||0.25)*cam.scale, 0, 7);
+    ctx.fillStyle = c.q > 0 ? '#ef4444' : '#3b82f6'; ctx.fill();
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(c.q > 0 ? '+' : '−', w2sX(c.x), w2sY(c.y)+1);
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    if (meta.label) { ctx.fillStyle='#334155'; ctx.font='12px ui-sans-serif';
+      ctx.fillText(meta.label, w2sX(c.x)+((meta.r||0.25)*cam.scale)+4, w2sY(c.y)-6); }
+  });
+}
+
+/* ================= 画布主绘制 ================= */
+function draw(t) {
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  // 冷调渐变底 + 轻晕影
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#f9fafc'); bg.addColorStop(1,'#edf1f8');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+  frameVars(t);
+  drawGrid(SC.world);
+  drawStatics();
+  drawField();
+
+  // 能量条（屏幕空间）
+  if (SC.energyBars) {
+    const items = SC.energyBars.items;
+    const bx = 12, by = 14, bw = 26, bh = 90, gap = 12;
+    ctx.font = '11px ui-sans-serif';
+    items.forEach((it, i) => {
+      const val = Math.max(0, ev(it.expr, t)), frac = it.emax ? Math.min(1, val/evp(it.emax)) : 0;
+      const x = bx + i*(bw+gap);
+      ctx.fillStyle = 'rgba(226,232,240,.75)';
+      ctx.beginPath(); ctx.roundRect(x, by, bw, bh, 5); ctx.fill();
+      const hh = bh*frac;
+      if (hh > 1) {
+        const gr = ctx.createLinearGradient(0, by+bh-hh, 0, by+bh);
+        gr.addColorStop(0, shade(it.color, 45)); gr.addColorStop(1, it.color);
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.roundRect(x, by+bh-hh, bw, hh, 4); ctx.fill();
+      }
+      ctx.fillStyle = shade(it.color, -25); ctx.textAlign='center';
+      ctx.fillText(it.label, x+bw/2, by+bh+13);
+      ctx.fillText(fmtNum(val), x+bw/2, by-4);
+      ctx.textAlign='left';
+    });
+  }
+
+  // 图表（屏幕空间右下）
+  graphCache.forEach(c => drawGraph(c, t));
+
+  // 动体
+  (SC.actors||[]).forEach(a => {
+    const pos = actorPos(a, t);
+    pushTrace(a, pos);
+    if (a.trace && traces[a.id] && traces[a.id].length > 1) {
+      ctx.lineWidth = a.trace.width||2;
+      ctx.shadowColor = a.trace.color||'#6366f1'; ctx.shadowBlur = 6;
+      const n = traces[a.id].length;
+      traces[a.id].forEach((p,i) => {
+        if (i===0) return;
+        ctx.strokeStyle = (a.trace.color||'#6366f1') + Math.round(40+165*i/n).toString(16).padStart(2,'0');
+        ctx.beginPath(); ctx.moveTo(w2sX(traces[a.id][i-1].x), w2sY(traces[a.id][i-1].y));
+        ctx.lineTo(w2sX(p.x), w2sY(p.y)); ctx.stroke();
+      });
+      ctx.shadowBlur = 0;
+    }
+    drawActor(a, pos, t);
+    // 速度/力矢量
+    (SC.vectors||[]).forEach((v,i) => {
+      if (v.attach !== a.id) return;
+      if (v.show && !P[v.show]) return;
+      frameVars(t);
+      const vx = ev(v.ex,t), vy = ev(v.ey,t), s = arrowScale[i]||1;
+      const sx = w2sX(pos.x), sy = w2sY(pos.y);
+      arrow(ctx, sx, sy, sx+vx*s*cam.scale, sy-vy*s*cam.scale, v.color||'#dc2626', 2.4);
+      if (v.label) { ctx.fillStyle=v.color||'#dc2626'; ctx.font='bold 12px ui-sans-serif';
+        ctx.fillText(v.label, sx+vx*s*cam.scale+6, sy-vy*s*cam.scale); }
+    });
+  });
+}
+
+/* 颜色加深/提亮工具：shade('#f59e0b', 45) 提亮，shade(...,-25) 加深 */
+function shade(hex, amt) {
+  if (typeof hex !== 'string' || hex[0] !== '#') return hex;
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+  const f = (c) => Math.max(0, Math.min(255, Math.round(amt > 0 ? c + (255-c)*amt/100 : c*(1+amt/100))));
+  return '#' + ((1<<24) + (f(r)<<16) + (f(g)<<8) + f(b)).toString(16).slice(1);
+}
+
+function drawActor(a, pos, t) {
+  const sx = w2sX(pos.x), sy = w2sY(pos.y);
+  const ang = actorF[a.id].ang ? actorF[a.id].ang(t,P,X) : 0;
+  ctx.save(); ctx.translate(sx,sy); ctx.rotate(-ang);
+  if (a.kind === 'ball') {
+    const r = (a.r||0.2)*cam.scale;
+    // 地面软阴影
+    ctx.fillStyle = 'rgba(15,23,42,.10)';
+    ctx.beginPath(); ctx.ellipse(0, r*0.92, r*0.85, r*0.22, 0, 0, 7); ctx.fill();
+    const r2 = r*0.98;
+    const grad = ctx.createRadialGradient(-r2*0.35,-r2*0.4,r2*0.12,0,0,r2);
+    grad.addColorStop(0, shade(a.colorHi || '#c7d2fe', 25)); grad.addColorStop(0.65, a.colorHi || a.color); grad.addColorStop(1, shade(a.color || '#6366f1', -18));
+    ctx.beginPath(); ctx.arc(0,0,r2,0,7);
+    ctx.shadowColor = shade(a.color||'#6366f1', -30); ctx.shadowBlur = 10;
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = shade(a.color||'#6366f1', -45); ctx.lineWidth = 1.5; ctx.stroke();
+    // 高光点
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.beginPath(); ctx.arc(-r2*0.32, -r2*0.38, r2*0.16, 0, 7); ctx.fill();
+  } else if (a.kind === 'block' || a.kind === 'rod') {
+    const wpx = (a.w||0.3)*cam.scale, hpx = (a.h||0.3)*cam.scale;
+    const gr = ctx.createLinearGradient(0,-hpx/2,0,hpx/2);
+    gr.addColorStop(0, shade(a.color||'#f59e0b', 40)); gr.addColorStop(0.45, a.color||'#f59e0b'); gr.addColorStop(1, shade(a.color||'#f59e0b', -22));
+    ctx.fillStyle = gr;
+    ctx.shadowColor = 'rgba(15,23,42,.28)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+    ctx.beginPath(); ctx.roundRect(-wpx/2,-hpx/2,wpx,hpx,4); ctx.fill();
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.strokeStyle = shade(a.color||'#f59e0b', -50); ctx.lineWidth = 1.5; ctx.stroke();
+    // 顶部高光棱线
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(-wpx/2+3, -hpx/2+2.5); ctx.lineTo(wpx/2-3, -hpx/2+2.5); ctx.stroke();
+  }
+  ctx.restore();
+  if (a.label) {
+    ctx.fillStyle = shade(a.color||'#334155', -40);
+    ctx.font='bold 12px ui-sans-serif';
+    if (a.kind === 'block' || a.kind === 'rod') {
+      ctx.fillStyle = '#fff';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(a.label, sx, sy);
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    } else {
+      ctx.fillText(a.label, sx+((a.r||a.w||0.3)*cam.scale)+5, sy-((a.r||a.h||0.3)*cam.scale)-4);
+    }
+  }
+}
+
+/* ---- 图表 ---- */
+const graphCache = [];
+function resampleGraphs() {
+  graphCache.length = 0;
+  (SC.graphs||[]).forEach(gr => {
+    const N = 160, ys = gr.curves.map(() => new Array(N+1));
+    let ymin=Infinity, ymax=-Infinity;
+    for (let k = 0; k <= N; k++) {
+      const tt = k/N*T_eff; frameVars(tt);
+      gr.curves.forEach((c,ci) => {
+        const v = ev(c.expr, tt); ys[ci][k]=v;
+        if (isFinite(v)) { ymin=Math.min(ymin,v); ymax=Math.max(ymax,v); }
+      });
+    }
+    if (!isFinite(ymin)) { ymin=0; ymax=1; }
+    if (ymax-ymin < 1e-9) { ymax=ymin+1; }
+    graphCache.push({ gr, N, ys, ymin, ymax });
+  });
+}
+function drawGraph(cache, tNow) {
+  const gr = cache.gr;
+  const pw = gr.w||240, ph = gr.h||130, px = W-pw-14, py = H-ph-58;
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath(); ctx.roundRect(px,py,pw,ph,10); ctx.fill(); ctx.stroke();
+  const pad = 24, ix = px+pad, iy = py+12, iw = pw-pad-12, ih = ph-34;
+  const {N, ys, ymin, ymax} = cache;
+  // 轴
+  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
+  ctx.strokeRect(ix, iy, iw, ih);
+  ctx.fillStyle = '#64748b'; ctx.font = '10px ui-sans-serif';
+  ctx.fillText(gr.title||'', px+8, py+ph-6);
+  ctx.fillText(fmtNum(ymax), px+2, iy+8); ctx.fillText(fmtNum(ymin), px+2, iy+ih);
+  const tFrac = Math.max(0, Math.min(1, tNow/T_eff));
+  gr.curves.forEach((c,ci) => {
+    ctx.strokeStyle = c.color||'#6366f1'; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    const upto = Math.max(1, Math.floor(N*tFrac));
+    for (let k = 0; k <= upto; k++) {
+      const gx = ix+iw*k/N, gy = iy+ih-(ys[ci][k]-ymin)/(ymax-ymin)*ih;
+      k?ctx.lineTo(gx,gy):ctx.moveTo(gx,gy);
+    }
+    ctx.stroke();
+  });
+  // 图例
+  let lx = ix+4;
+  gr.curves.forEach(c => { ctx.fillStyle=c.color||'#6366f1'; ctx.fillRect(lx,iy+ih+3,8,3);
+    ctx.fillStyle='#475569'; ctx.fillText(c.label,lx+11,iy+ih+8); lx += 18+c.label.length*11; });
+}
+
+function fmtNum(v) {
+  if (!isFinite(v)) return '—';
+  if (Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-2 && v !== 0)) return v.toExponential(2);
+  return +v.toFixed(2)+'';
+}
+
+/* ================= 面板渲染 ================= */
+function buildPanels() {
+  document.documentElement.style.setProperty('--accent', DATA.lesson.accent || '#6366f1');
+  document.getElementById('lessonTitle').textContent = DATA.lesson.title;
+  document.getElementById('lessonSub').textContent = DATA.lesson.subtitle||'';
+  document.title = DATA.lesson.title;
+  const prob = document.getElementById('problem');
+  prob.innerHTML = DATA.lesson.problem;
+  document.getElementById('btnAnswer').onclick = () => {
+    const el = document.getElementById('answer');
+    el.classList.toggle('hidden');
+    document.getElementById('btnAnswer').textContent = el.classList.contains('hidden') ? '显示答案' : '收起答案';
+  };
+  const ans = document.getElementById('answer');
+  ans.innerHTML = DATA.lesson.answer||''; ans.classList.add('hidden');
+
+  // 参数滑块
+  const pc = document.getElementById('params');
+  (DATA.params||[]).forEach(p => {
+    const row = document.createElement('div');
+    row.innerHTML = `<div class="flex justify-between text-sm mb-1">
+        <span class="text-slate-600">${p.label}</span>
+        <span class="chip font-medium" id="pv-${p.key}"></span></div>`;
+    const inp = document.createElement('input');
+    inp.type='range'; inp.min=p.min; inp.max=p.max; inp.step=p.step||((p.max-p.min)/100);
+    inp.value=p.value; inp.className='w-full accent-indigo-600';
+    inp.oninput = () => {
+      P[p.key] = parseFloat(inp.value);
+      document.getElementById('pv-'+p.key).textContent = fmtParam(P[p.key], p);
+      onParamsChange();
+    };
+    row.appendChild(inp); pc.appendChild(row);
+    document.getElementById('pv-'+p.key).textContent = fmtParam(p.value, p);
+  });
+
+  // 读数（id 用索引，避免中文标签清洗后撞 id）
+  const ro = document.getElementById('readouts');
+  (DATA.readouts||[]).forEach((r, i) => {
+    const el = document.createElement('div');
+    el.className = 'flex justify-between items-center border-b border-slate-100 py-1 last:border-0';
+    el.innerHTML = `<span class="text-slate-500">${r.label}</span><span class="chip font-semibold ${r.hl?'ro-hl rounded-lg px-2':''}" id="ro-${i}">—</span>`;
+    ro.appendChild(el);
+  });
+
+  // 步骤
+  const st = document.getElementById('steps');
+  (DATA.steps||[]).forEach((s,i) => {
+    const el = document.createElement('div');
+    el.className = 'step-card panel p-3 cursor-pointer';
+    el.innerHTML = `<div class="flex items-center gap-2 mb-1">
+        <span class="step-num w-5 h-5 rounded-full text-white text-[11px] flex items-center justify-center font-bold">${i+1}</span>
+        <span class="font-semibold text-sm">${s.title}</span></div>
+      <div class="text-sm text-slate-700 leading-relaxed">${s.content}</div>`;
+    el.onclick = () => { t = s.t0*T_eff + 1e-3; tracesClear(); setPlaying(false); syncUI(); };
+    st.appendChild(el);
+  });
+
+  // 舞台叠加开关（如受力分析）
+  const ov = document.getElementById('overlays');
+  (DATA.toggles||[]).forEach(tg => {
+    const b = document.createElement('button');
+    b.className = 'text-xs px-2.5 py-1 rounded-lg bg-white/90 border shadow-sm hover:bg-white';
+    b.textContent = tg.label;
+    let on = !!tg.on;
+    const paint = () => { b.style.background = on ? '#4f46e5' : ''; b.style.color = on ? '#fff' : ''; };
+    b.onclick = () => { on = !on; P[tg.key] = on ? 1 : 0; paint(); };
+    P[tg.key] = on ? 1 : 0; paint();
+    ov.appendChild(b);
+  });
+  if (SC.follow) btnFollow.classList.remove('hidden');
+
+  // 知识簇卡片（聚合效应：每页标注自己在簇中的位置 + 兄弟页导航）
+  if (DATA.cluster) {
+    const cl = DATA.cluster;
+    const card = document.createElement('div');
+    card.className = 'cluster-card panel p-4 flex-shrink-0';
+    const nodes = (cl.members||[]).map(mm => `
+      <div class="cluster-node ${mm.self?'self':''} ${mm.href?'cursor-pointer hover:shadow-sm':''} px-2.5 py-1.5 mb-1.5 last:mb-0"
+           ${mm.href&&!mm.self?`onclick="location.href='${mm.href}'"`:''}>
+        <div class="text-[13px] font-semibold ${mm.self?'text-indigo-700':'text-slate-700'}">${mm.self?'▸ ':''}${mm.name}</div>
+        ${mm.note?`<div class="text-[11px] text-slate-500 leading-tight mt-0.5">${mm.note}</div>`:''}
+      </div>`).join('');
+    card.innerHTML = `<h2 class="font-bold text-slate-900 mb-1">🧠 知识簇 · ${cl.name}</h2>
+      <p class="text-[11px] text-slate-500 mb-2.5">${cl.idea||''}</p>${nodes}
+      ${cl.hub?`<button onclick="location.href='${cl.hub}'" class="mt-2 w-full text-xs py-1.5 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50">进入簇中心 · 看系统结构 →</button>`:''}`;
+    document.getElementById('left').appendChild(card);
+  }
+
+  try { renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]}); } catch(e){}
+}
+function sanitize(s){ return s.replace(/\W/g,''); }
+function fmtParam(v, p) { return (+v).toFixed(p.digits!==undefined?p.digits:(p.max-p.min<3?2:1)) + (p.unit||''); }
+
+function updateReadouts() {
+  (DATA.readouts||[]).forEach((r, i) => {
+    const el = document.getElementById('ro-'+i);
+    if (!el) return;
+    if (r.flag) {
+      const v = ev(r.expr, t);
+      el.textContent = v >= 0 ? r.posText : r.negText;
+    } else {
+      const v = ev(r.expr, t);
+      el.textContent = r.raw ? String(v) : (fmtNum(v) + (r.unit||''));
+    }
+  });
+}
+
+function onParamsChange() {
+  buildIntegrators();
+  if (INT[XVARS[0]] && (DATA.scene||{}).T === 'auto') T_eff = INT[XVARS[0]].T;
+  computeAutoScales(); resampleGraphs(); rebuildField();
+  tracesClear();
+}
+
+/* ================= 主循环 ================= */
+let lastTs = null;
+function loop(ts) {
+  if (lastTs === null) lastTs = ts;
+  const dt = Math.min(0.05, (ts-lastTs)/1000); lastTs = ts;
+  if (playing) {
+    t += dt*speed*(SC.timeScale||1);
+    if (t >= T_eff) {
+      if (loopOn || SC.loop) { t = 0; tracesClear(); }
+      else { t = T_eff; setPlaying(false); }
+    }
+    subEl.style.opacity = 1;
+  }
+  // 运镜跟随
+  if (cam.follow && SC.follow) {
+    const a = (SC.actors||[]).find(x => x.id === SC.follow);
+    if (a) { const p = actorPos(a, t);
+      cam.cx += (p.x-cam.cx)*0.06; cam.cy += (p.y-cam.cy)*0.06; }
+  }
+  draw(t);
+  if (threeActive && three3d) three3d.update(t);   // 3D 每帧同步（此前漏调导致 3D 冻结在切换瞬间的一帧）
+  updateReadouts(); syncSteps(); syncUI();
+  requestAnimationFrame(loop);
+}
+function syncUI() {
+  timeline.value = T_eff>0 ? t/T_eff*1000 : 0;
+  clockEl.textContent = t.toFixed(1)+' / '+T_eff.toFixed(1)+' '+(SC.clockUnit||'s');
+}
+
+/* ================= 3D 视角（惰性加载 three；复用 2D actors/vectors 表达式） ================= */
+let three3d = null, threeActive = false;
+const btn3D = document.getElementById('btn3D');
+if (SC.scene3d) btn3D.classList.remove('hidden');
+btn3D.onclick = async () => {
+  btn3D.disabled = true;
+  try {
+    if (!three3d) three3d = await window.Phys3D.mount(
+      document.getElementById('stageWrap'), SC,
+      (expr, tt) => ev(expr, tt === undefined ? t : tt),
+      (i) => arrowScale[i] || 1);
+    threeActive = !threeActive;
+    three3d.canvas.style.display = threeActive ? 'block' : 'none';
+    cv.style.visibility = threeActive ? 'hidden' : 'visible';
+    btn3D.textContent = threeActive ? '📄 2D' : '🧊 3D';
+    btn3D.style.background = threeActive ? '#4f46e5' : '';
+    btn3D.style.color = threeActive ? '#fff' : '';
+    if (threeActive) { three3d.resize(); three3d.update(t); }
+  } catch (e) { console.error('3D init failed', e); }
+  btn3D.disabled = false;
+};
+
+/* ================= 启动 ================= */
+resize(); buildPanels();
+buildIntegrators();
+if (SC.T === 'auto' && XVARS.length && INT[XVARS[0]]) T_eff = INT[XVARS[0]].T;
+// 教学循环律落地：>10s 的场景整体加速压进 10s（表达式不变，只改播放速度）
+if (T_eff > T_MAX) {
+  SC.timeScale = (SC.timeScale || 1) * (T_eff / T_MAX);
+}
+fitCamera(); computeAutoScales(); resampleGraphs(); rebuildField();
+setPlaying(true);   // 打开即自动循环播放（教学循环）
+requestAnimationFrame(loop);
+</script>
+<script type="module">
+/* 3D 场景引擎：按 DATA.scene3d.kind 构建空间结构；运动/矢量全部复用 2D actors/vectors
+   表达式（x,y→three(x,y,0)，z 为深度）。首次点击 🧊 才 dynamic import three。 */
+window.Phys3D = {
+  async mount(host, SC, ev, arrowScaleAt) {
+    const THREE = await import('three');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    const S3 = SC.scene3d || {};
+    const cv = host.querySelector('#cv');
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:none;z-index:3';
+    cv.parentElement.appendChild(canvas);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#f6f8fc');
+    // 3D 显示缩放：cm/ns 级场景（如磁场圆周 r=4cm）用 zoom 放大到可观察尺度；
+    // 一切场景内容挂 root 统一吃缩放，相机位置同步乘 ZOOM
+    const ZOOM = S3.zoom || 1;
+    const root = new THREE.Group();
+    root.scale.setScalar(ZOOM);
+    scene.add(root);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.01 * ZOOM, 500 * ZOOM);
+    const cam = S3.cam || { pos: [5, 6, 12], target: [0, 1, 0] };
+    camera.position.set(cam.pos[0] * ZOOM, cam.pos[1] * ZOOM, cam.pos[2] * ZOOM);
+    const controls = new OrbitControls(camera, canvas);
+    controls.target.set(cam.target[0] * ZOOM, cam.target[1] * ZOOM, (cam.target[2] || 0) * ZOOM);
+    controls.enableDamping = true;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(6 * ZOOM, 12 * ZOOM, 8 * ZOOM);
+    scene.add(sun);
+
+    // 网格地面（默认 y=0；S3.groundY 指定地面高度，如碰撞球心 y=0 球底在 -r）
+    const g = SC.world;
+    const groundY = S3.groundY || 0;
+    const grid = new THREE.GridHelper(Math.max(g.x1 - g.x0, g.y1 - g.y0) * 2.2, 22, 0xb9c4d6, 0xd8e0ec);
+    grid.material.opacity = 0.55; grid.material.transparent = true;
+    grid.position.set((g.x0 + g.x1) / 2, groundY, 0);
+    root.add(grid);
+    // 数值或表达式串通用求值（scene3d 结构参数允许直接给数字）
+    const evn = (v, tt) => (typeof v === 'number') ? v : ev(v, tt);
+
+    const MAT = (c, o) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: 0.08, ...(o || {}) });
+    const dyn = [];   // {mesh, ai, vec, kind:'body'|'block'} 每帧同步
+    const arrows = []; // {helper, vi} 每帧同步
+    const ghosts = []; // {line, ai, N} 世界模型 rollout 预测线
+    const box = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT(c));
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const addArrow = (color, len, at) => {
+      const h = new THREE.ArrowHelper(V(0, 1, 0), V(0, 0, 0), len, color, len * 0.28, len * 0.16);
+      root.add(h); arrows.push({ helper: h, vi: at });
+      return h;
+    };
+
+    /* ---- 静态结构：按 kind ---- */
+    if (S3.kind === 'incline') {
+      const Lx = S3.Lx ? ev(S3.Lx, 0) : ev('10*Math.cos(theta*Math.PI/180)', 0);
+      const Ly = S3.Ly ? ev(S3.Ly, 0) : ev('10*Math.sin(theta*Math.PI/180)', 0);
+      const depth = S3.depth || 4;
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0); shape.lineTo(Lx, 0); shape.lineTo(0, Ly); shape.closePath();
+      const wedge = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }),
+        MAT(0xc9d4e8, { transparent: true, opacity: 0.85 }));
+      wedge.position.set(0, 0, -depth / 2);
+      root.add(wedge);
+    } else if (S3.kind === 'vcircle') {
+      const r = ev('r', 0) || 1;
+      const pts = [];
+      for (let i = 0; i <= 96; i++) { const a = i / 96 * Math.PI * 2; pts.push(V(r * Math.sin(a), r + r * Math.cos(a), 0)); }
+      const track = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: 0x64748b }));
+      root.add(track);
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, r, 12), MAT(0x94a3b8));
+      pillar.position.set(0, r / 2, 0); root.add(pillar);
+      const hub = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), MAT(0x475569));
+      hub.position.set(0, r, 0); root.add(hub);
+    } else if (S3.kind === 'rails' || S3.kind === 'railtrack') {
+      // railtrack=纯轨道（力学通用，无电磁元件）；rails=电磁感应全套（导轨+电阻+B 场箭头）
+      // x 范围默认取场景世界边界，也可由 S3.x0/x1（数字或表达式）显式指定
+      const x0 = S3.x0 != null ? evn(S3.x0, 0) : g.x0 + 0.3;
+      const x1 = S3.x1 != null ? evn(S3.x1, 0) : g.x1 - 0.3;
+      const depth = S3.depth || 1.2;
+      if (S3.kind === 'railtrack') {
+        // 平整滑道：面板坐在地面上、顶面托住动体，两侧低缘示意轨道
+        const plate = box(x1 - x0, 0.06, depth, 0xdde6f2);
+        plate.position.set((x0 + x1) / 2, groundY + 0.03, 0); root.add(plate);
+        for (const z of [-depth / 2, depth / 2]) {
+          const curb = box(x1 - x0, 0.035, 0.05, 0x94a3b8);
+          curb.position.set((x0 + x1) / 2, groundY + 0.06 + 0.0175, z); root.add(curb);
+        }
+      } else {
+        const railY = S3.railY != null ? S3.railY : 0;
+        for (const z of [-depth / 2, depth / 2]) {
+          const rail = box(x1 - x0, 0.045, 0.07, 0x64748b);
+          rail.position.set((x0 + x1) / 2, railY, z); root.add(rail);
+        }
+        // 右端电阻（横跨两轨的接线块 + 铭牌板）
+        const res = box(0.14, 0.16, depth + 0.1, 0xf59e0b);
+        res.position.set(x1, railY + 0.08, 0); root.add(res);
+        const plate = box(0.03, 0.3, 0.3, 0xd97706);
+        plate.position.set(x1 + 0.1, railY + 0.15, 0); root.add(plate);
+        // B 竖直向下：箭头从轨面上方起、尖贴近轨面（穿过回路平面，不再悬空）
+        const alen = 0.42;
+        for (let x = x0 + 0.6; x < x1 - 0.4; x += 1.1) for (let z = -depth / 2 + 0.25; z <= depth / 2; z += 0.55) {
+          const h = new THREE.ArrowHelper(V(0, -1, 0), V(x, railY + 0.78, z), alen, 0x818cf8, alen * 0.32, alen * 0.17);
+          root.add(h);
+        }
+      }
+    } else if (S3.kind === 'fieldbox') {
+      // 磁场区域盒：S3.center=[cx,cy] 指定盒心（缺省底边贴地），锥阵密度随盒尺寸自适应
+      const bx = S3.box || [0.64, 0.6, 0.3];
+      const c = S3.center || [0, bx[1] / 2];
+      const region = new THREE.Mesh(new THREE.BoxGeometry(...bx),
+        new THREE.MeshBasicMaterial({ color: 0x6366f1, transparent: true, opacity: 0.06 }));
+      region.position.set(c[0], c[1], 0); root.add(region);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...bx)),
+        new THREE.LineBasicMaterial({ color: 0xa5b4fc }));
+      edges.position.copy(region.position); root.add(edges);
+      // B 垂直纸面向里：锥尖指向 -z（纸面内），= × 标记的 3D 化
+      const sp = Math.min(bx[0], bx[1]) / 9;
+      for (let x = c[0] - bx[0] / 2 + sp / 2; x <= c[0] + bx[0] / 2 - sp / 2 + 1e-9; x += sp)
+        for (let y = c[1] - bx[1] / 2 + sp / 2; y <= c[1] + bx[1] / 2 - sp / 2 + 1e-9; y += sp) {
+          const cone = new THREE.Mesh(new THREE.ConeGeometry(sp * 0.12, sp * 0.4, 8), MAT(0x818cf8));
+          cone.position.set(x, y, 0); cone.rotation.x = -Math.PI / 2; root.add(cone);
+        }
+    }
+
+    /* ---- 动体：来自 2D actors ---- */
+    const gltfLoader = (S3.assets) ? new Promise(async (resolve) => {
+      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+      const loader = new GLTFLoader();
+      const out = {};
+      Object.entries(S3.assets).forEach(([name, dataUri]) => {
+        loader.load(dataUri, (gltf) => {
+          const m = gltf.scene;
+          // 归一化：包围盒缩放到 1，绕平放（生成资产通常 Y 上/朝向不定，由 assetRot 预旋转）
+          const bb = new THREE.Box3().setFromObject(m);
+          const size = bb.getSize(V(0, 0, 0));
+          const k = 1 / Math.max(size.x, size.y, size.z);
+          const wrap = new THREE.Group();
+          const rot = (S3.assetRot && S3.assetRot[name]) || [0, 0, 0];
+          m.rotation.set(...rot);
+          m.scale.setScalar(k);
+          // 生成资产无纹理且常缺 normals（trimesh 导出）：补法线 + 双面 + 主题色，防止渲染不出/隐形
+          m.traverse(ch => {
+            if (ch.isMesh) {
+              if (!ch.geometry.attributes.normal) ch.geometry.computeVertexNormals();
+              ch.frustumCulled = false;
+              const mat = ch.material;
+              const hasTex = mat && (mat.map || mat.vertexColors);
+              ch.material = new THREE.MeshStandardMaterial({
+                color: 0xc98a4b, roughness: 0.65, metalness: 0.05, side: THREE.DoubleSide,
+                ...(hasTex ? { map: mat.map, vertexColors: mat.vertexColors } : {}),
+              });
+            }
+          });
+          wrap.add(m);
+          wrap.userData.size = size.multiplyScalar(k);
+          out[name] = wrap;
+          resolve(out);
+        }, undefined, (err) => { console.error('GLB load FAILED:', err && err.message || err); resolve(out); });
+      });
+    }) : null;
+    let assets = {};
+
+    (SC.actors || []).forEach((a, ai) => {
+      let mesh;
+      if (a.asset) {
+        // 世界模型层：混元生成的 GLB 资产占位组，加载完成后替换内部 mesh
+        mesh = new THREE.Group();
+        mesh.userData.assetName = a.asset;
+      } else if (a.kind === 'ball') {
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(a.r || 0.2, 24, 18), MAT(a.color || 0x6366f1));
+      } else {
+        // a.box3d=[w,h,d] 可显式指定 3D 几何（如导轨棒横躺跨轨），缺省按 2D 宽高给方块
+        const wpx = a.w || 0.3, hpx = a.h || 0.3, dp = S3.depth ? Math.min(0.6, S3.depth * 0.35) : 0.5;
+        const dims = a.box3d || [wpx, hpx, dp];
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(dims[0], dims[1], dims[2]), MAT(a.color || 0xf59e0b));
+      }
+      root.add(mesh);
+      dyn.push({ mesh, ai, kind: a.kind, asset: !!a.asset });
+      // 世界模型 rollout：未来轨迹预测幽灵（虚线，随 t 前推）
+      if (S3.ghost !== false) {
+        const N = 26, gpts = new Array(N).fill(0).map(() => V(0, 0, 0));
+        const geo = new THREE.BufferGeometry().setFromPoints(gpts);
+        const gm = new THREE.LineDashedMaterial({ color: 0x475569, dashSize: 0.4, gapSize: 0.22, transparent: true, opacity: 0.85 });
+        const line = new THREE.Line(geo, gm);
+        root.add(line);
+        ghosts.push({ line, ai, N });
+      }
+      // 该动体的矢量
+      (SC.vectors || []).forEach((v, vi) => {
+        if (v.attach !== a.id) return;
+        if (v.show && !P[v.show]) return;
+        addArrow(parseInt((v.color || '#dc2626').slice(1), 16), 1, vi);
+      });
+    });
+    (async () => {
+      if (gltfLoader) { assets = await gltfLoader; dyn.forEach(d => {
+        if (!d.asset) return;
+        const name = d.mesh.userData.assetName;
+        if (assets[name]) {
+          const src = assets[name];
+          const m = src.clone(true);
+          // 缩放资产到动体名义尺寸（w 为目标长）
+          const a = SC.actors[d.ai];
+          const target = a.w || a.r * 2 || 0.6;
+          const sz = src.userData.size;
+          const k = target / Math.max(sz.x, 1e-6);
+          m.scale.setScalar(k);
+          // 底面对齐：物理锚点=方块中心，资产底面抬到中心上方 h/2
+          m.position.y = (a.h ? a.h / 2 : 0);
+          d.mesh.add(m);
+        }
+      }); }
+    })();
+    // 无 attach 的全局矢量（少见）忽略
+    void arrowScaleAt;
+
+    function update(tt) {
+      // 斜面法向抬升：让方块贴在楔面上而不是嵌入（法向 (-sinθ, cosθ)，抬 h/2）
+      const az = S3.actorZ || 0;   // 动体深度位置（骑在可见前脸用正值）
+      const thUp = (S3.kind === 'incline')
+        ? { x: -Math.sin(ev('theta*Math.PI/180', tt) || 0), y: Math.cos(ev('theta*Math.PI/180', tt) || 1) }
+        : null;
+      dyn.forEach(d => {
+        const a = SC.actors[d.ai];
+        const x = evn(a.x, tt), y = a.y3d != null ? evn(a.y3d, tt) : evn(a.y, tt);
+        if (thUp && d.kind !== 'ball') {
+          const lift = ((a.h || 0.4) / 2) * 0.96;
+          d.mesh.position.set(x + thUp.x * lift, y + thUp.y * lift, az);
+        } else {
+          d.mesh.position.set(x, y, az);
+        }
+        const f = actorF[d.ai];
+        if (d.kind !== 'ball' && f && f.ang) d.mesh.rotation.z = -f.ang(tt, P, X);
+      });
+      arrows.forEach(ar => {
+        const v = SC.vectors[ar.vi];
+        if (v.show && !P[v.show]) { ar.helper.visible = false; return; }
+        ar.helper.visible = true;
+        const a = SC.actors.find(x => x.id === v.attach);
+        let ox = a ? evn(a.x, tt) : 0, oy = a ? (a.y3d != null ? evn(a.y3d, tt) : evn(a.y, tt)) : 0;
+        if (thUp && a && a.kind !== 'ball') {
+          const lift = ((a.h || 0.4) / 2) * 0.96;
+          ox += thUp.x * lift; oy += thUp.y * lift;
+        }
+        const ex = ev(v.ex, tt), ey = ev(v.ey, tt);
+        const s = arrowScaleAt(SC.vectors.indexOf(v));
+        const len = Math.hypot(ex, ey) * s;
+        ar.helper.setLength(Math.max(len, 0.001), Math.max(len, 0.001) * 0.28, Math.max(len, 0.001) * 0.16);
+        ar.helper.position.set(ox, oy, az);
+        if (len > 1e-9) ar.helper.setDirection(V(ex / len, ey / len, 0));
+      });
+      // 世界模型 rollout：前推 3s 未来轨迹（0.12s 步长）
+      const gdt = 0.12;
+      ghosts.forEach(g => {
+        const a = SC.actors[g.ai];
+        const pts = [];
+        for (let k = 0; k < g.N; k++) {
+          const ft = tt + k * gdt;
+          pts.push(V(ev(a.x, ft), ev(a.y, ft), az));
+        }
+        g.line.geometry.setFromPoints(pts);
+        g.line.computeLineDistances();
+        g.line.position.set(0, 0, 0);
+      });
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    function resize() {
+      const r = host.getBoundingClientRect();
+      renderer.setSize(r.width, r.height, false);
+      camera.aspect = r.width / Math.max(1, r.height);
+      camera.updateProjectionMatrix();
+    }
+    resize();
+    window.__P3D_DEBUG = { scene, camera, renderer, dyn, SC };
+    return { canvas, update, resize };
+  },
+};
+</script>
+</body>
+</html>

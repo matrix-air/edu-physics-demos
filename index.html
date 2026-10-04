@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>物化数演示 · 优化后全量展示（12 页）</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", sans-serif; background:#f6f8fc; color:#1e293b; margin:0; padding:2rem 2.4rem; }
+  h1 { font-size:1.5rem; margin:0 0 .2rem; }
+  .sub { color:#64748b; font-size:.9rem; margin-bottom:1.6rem; }
+  h2 { font-size:1.05rem; margin:1.6rem 0 .7rem; color:#4f46e5; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:.8rem; }
+  a.card { display:block; background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:.9rem 1.1rem; text-decoration:none; color:inherit; transition:.15s; }
+  a.card:hover { border-color:#818cf8; box-shadow:0 4px 18px rgba(99,102,241,.12); transform:translateY(-2px); }
+  .t { font-weight:600; margin-bottom:.3rem; }
+  .d { font-size:.82rem; color:#64748b; line-height:1.5; }
+  .tags { margin-top:.5rem; display:flex; gap:.35rem; flex-wrap:wrap; }
+  .tag { font-size:.7rem; background:#eef2ff; color:#4f46e5; border-radius:6px; padding:.12rem .45rem; }
+  .tag.hot { background:#fef3c7; color:#b45309; }
+  .note { margin-top:1.8rem; font-size:.8rem; color:#94a3b8; line-height:1.7; }
+</style>
+</head>
+<body>
+<h1>🎬 物化数演示 · 优化后全量展示</h1>
+<div class="sub">12 个单文件交互页（打开即自动循环播放；🎬 电影模式一键授课；🧊 标记的可切 3D，离线可用）。</div>
+
+<h2>力学（edu-physics-mechanics）</h2>
+<div class="grid">
+  <a class="card" href="mech-incline_newton2.html"><div class="t">斜面滑块 · 牛顿第二定律</div><div class="d">受力分析→正交分解→F=ma→运动学，摩擦自锁实时判定；3D 有混元小车资产</div><div class="tags"><span class="tag">🧊 3D</span><span class="tag">随机出题</span></div></a>
+  <a class="card" href="mech-projectile.html"><div class="t">平抛运动</div><div class="d">分解/合成，时间由高度决定，v-t 双曲线 + 轨迹渐显</div><div class="tags"><span class="tag">随机出题</span></div></a>
+  <a class="card" href="mech-shm_spring.html"><div class="t">弹簧振子 · 简谐运动</div><div class="d">回复力、周期与振幅无关，Ek/Ep 能量条此消彼长</div><div class="tags"><span class="tag">随机出题</span><span class="tag">循环</span></div></a>
+  <a class="card" href="mech-collision.html"><div class="t">一维碰撞 · 动量守恒 <span class="tag hot">本轮重修</span></div><div class="d">恢复系数 e 连续可调；3D 换成纯滑道（不再串电磁元件），时长裁剪到碰后出界即循环</div><div class="tags"><span class="tag">🧊 3D</span><span class="tag">随机出题</span></div></a>
+  <a class="card" href="mech-vertical_circle.html"><div class="t">竖直圆周 · 绳模型</div><div class="d">数值积分驱动变速圆周，临界速度脱轨判定，最低点超重</div><div class="tags"><span class="tag">🧊 3D</span><span class="tag">随机出题</span></div></a>
+  <a class="card" href="mech-spring_collision_ramp.html"><div class="t">弹簧缓冲对撞 + 冲斜面（压轴）</div><div class="d">四段式：匀速→压缩共速→弹开→冲粗糙斜面；五条能量账本 ΣE 恒定</div><div class="tags"><span class="tag">随机出题</span></div></a>
+  <a class="card" href="mech-gaokao2013_threeblocks.html"><div class="t">【真题】2013 课标Ⅱ卷 35(2)</div><div class="d">三物块弹簧碰撞；ΣE 校验识破网传错答（官方 13mv₀²/48）</div><div class="tags"><span class="tag hot">真题</span><span class="tag">随机出题</span></div></a>
+</div>
+
+<h2>电磁学（edu-electromagnetism）</h2>
+<div class="grid">
+  <a class="card" href="em-coulomb_field.html"><div class="t">库仑定律与电场叠加 <span class="tag hot">内核重修</span></div><div class="d">真实积分场线+矢量场；中点场强公式符号 bug 已修（同号相消/异号相加）</div><div class="tags"><span class="tag">随机出题</span></div></a>
+  <a class="card" href="em-particle_deflection.html"><div class="t">电场偏转 · 类平抛 <span class="tag hot">打板冻结</span></div><div class="d">示波管模型；偏转过大时粒子真实打上极板（不再穿板而过）</div><div class="tags"><span class="tag">随机出题</span></div></a>
+  <a class="card" href="em-lorentz_circle.html"><div class="t">磁场圆周运动 <span class="tag hot">本轮重修</span></div><div class="d">r=mv/qB，T 与 v 无关；3D 场区盒按轨道适配 + 整体放大，粒子清晰可见</div><div class="tags"><span class="tag">🧊 3D</span><span class="tag">随机出题</span></div></a>
+  <a class="card" href="em-induction_rail.html"><div class="t">导轨导体棒 · 电磁感应</div><div class="d">BLv→I→安培力阻碍→指数衰减；3D 导轨对齐世界、导体棒横躺跨轨、B 箭头贴轨面</div><div class="tags"><span class="tag">🧊 3D</span><span class="tag">随机出题</span></div></a>
+  <a class="card" href="em-gaokao2019_field_triangle.html"><div class="t">【真题】2019 全国Ⅰ卷 24 题</div><div class="d">电场加速+三角形磁场 90° 圆弧偏转；与官方⑦式逐项一致</div><div class="tags"><span class="tag hot">真题</span><span class="tag">随机出题</span></div></a>
+</div>
+
+<div class="note">
+本轮修复要点：① 碰撞 3D 不再串入电磁导轨/磁场；② 磁场圆周 3D 粒子可见（盒体贴轨道）；③ 3D 引擎离线可用（three 本地内嵌）；④ 随机出题 12 个情景全部真实生效（此前 10 个静默显示默认参数）；⑤ 库仑中点场强物理公式修正；⑥ 电场偏转打板冻结。<br>
+引擎操作：空格播放/暂停，←→ 逐帧，L 循环，C 电影模式，1-9 跳步骤，✏️ 画笔标注。
+</div>
+</body>
+</html>
